@@ -36,7 +36,20 @@ import csv
 import math
 
 from . import cdb, utils
+from . import registry
 from .utils.iter import ilen
+
+dirty_hack = registry.Group()
+dirty_hack.setName('dbi_stat')
+
+def set_db_modified():
+    dirty_hack.register('modified',registry.Float(time.gmtime()))
+
+def get_db_modified():
+    if 'modified' in dirty_hack.get_values():
+        return dirty_hack.get('modified')()
+    else:
+        return 0.0
 
 class Error(Exception):
     """General error for this module."""
@@ -265,7 +278,8 @@ class FlatfileMapping(MappingInterface):
         outfd.close()
 
     def flush(self):
-        pass # No-op, we maintain no open files.
+        '''No-op, we maintain no open files.'''
+        pass
 
     def close(self):
         self.vacuum() # Should we do this?  It should be fine.
@@ -340,15 +354,18 @@ class DB(object):
     def set(self, id, record):
         s = record.serialize()
         self.map.set(id, s)
+        set_db_modified()   # set global conf modified
 
     def add(self, record):
         s = record.serialize()
         id = self.map.add(s)
         record.id = id
+        # set global conf modified
         return id
 
     def remove(self, id):
         self.map.remove(id)
+        set_db_modified()   # set global conf modified
 
     def __iter__(self):
         for (id, s) in self.map:
@@ -371,9 +388,11 @@ class DB(object):
 
     def flush(self):
         self.map.flush()
+        set_db_modified()   # set global conf modified
 
     def vacuum(self):
         self.map.vacuum()
+        set_db_modified()   # set global conf modified
 
     def close(self):
         self.map.close()
