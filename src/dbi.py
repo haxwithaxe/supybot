@@ -42,12 +42,22 @@ from .utils.iter import ilen
 dirty_hack = registry.Group()
 dirty_hack.setName('dbi_stat')
 
-def set_db_modified():
-    dirty_hack.register('modified',registry.Float(time.gmtime()))
+wopr_debug = False
+if 'WOPR_DEBUG' in os.environ:
+    wopr_debug = True
 
-def get_db_modified():
-    if 'modified' in dirty_hack.get_values():
-        return dirty_hack.get('modified')()
+def _wprint(*args):
+    if wopr_debug:
+        print(args)
+
+def set_db_stat(stat='modified'):
+    #_wprint('set_db_stat.stat: %s' % stat)
+    dirty_hack.register(stat, registry.Float(time.gmtime()))
+
+def get_db_stat(stat='modified'):
+    #_wprint('set_db_stat.stat: %s' % stat)
+    if stat in dirty_hack.getValues():
+        return dirty_hack.get(stat)()
     else:
         return 0.0
 
@@ -136,11 +146,13 @@ class DirMapping(MappingInterface):
             raise exn
 
     def set(self, id, s):
+        _wprint('DirMapping.set')
         fd = file(self._makeFilename(id), 'w')
         fd.write(s)
         fd.close()
 
     def add(self, s):
+        _wprint('DirMapping.add')
         id = self._getMax()
         fd = file(self._makeFilename(id), 'w')
         try:
@@ -150,6 +162,7 @@ class DirMapping(MappingInterface):
             fd.close()
 
     def remove(self, id):
+        _wprint('DirMapping.remove')
         try:
             os.remove(self._makeFilename(id))
         except EnvironmentError, e:
@@ -157,6 +170,7 @@ class DirMapping(MappingInterface):
 
 class FlatfileMapping(MappingInterface):
     def __init__(self, filename, maxSize=10**6):
+        _wprint('FlatfileMapping.__init__')
         self.filename = filename
         try:
             fd = file(self.filename)
@@ -179,6 +193,7 @@ class FlatfileMapping(MappingInterface):
             return '-'*self.maxSize
     
     def _incrementCurrentId(self, fd=None):
+        _wprint('FlatfileMapping._incrementCurrentId')
         fdWasNone = fd is None
         if fdWasNone:
             fd = file(self.filename, 'a')
@@ -198,6 +213,7 @@ class FlatfileMapping(MappingInterface):
         return '%s:%s\n' % (self._canonicalId(id), s)
 
     def add(self, s):
+        _wprint('FlatfileMapping.add')
         line = self._joinLine(self.currentId, s)
         fd = file(self.filename, 'r+')
         try:
@@ -225,6 +241,7 @@ class FlatfileMapping(MappingInterface):
     #     maximum id remains accurate if this is some value we've never given
     #     out -- i.e., self.maxid = max(self.maxid, id) or something.
     def set(self, id, s):
+        _wprint('FlatfileMapping.set')
         strLine = self._joinLine(id, s)
         try:
             fd = file(self.filename, 'r+')
@@ -235,6 +252,7 @@ class FlatfileMapping(MappingInterface):
             fd.close()
 
     def remove(self, id, fd=None):
+        _wprint('FlatfileMapping.remove')
         fdWasNone = fd is None
         strId = self._canonicalId(id)
         try:
@@ -268,6 +286,7 @@ class FlatfileMapping(MappingInterface):
         fd.close()
 
     def vacuum(self):
+        _wprint('FlatfileMapping.vacuum')
         infd = file(self.filename)
         outfd = utils.file.AtomicFile(self.filename,makeBackupIfSmaller=False)
         outfd.write(infd.readline()) # First line, nextId.
@@ -278,10 +297,12 @@ class FlatfileMapping(MappingInterface):
         outfd.close()
 
     def flush(self):
+        _wprint('FlatfileMapping.flush')
         '''No-op, we maintain no open files.'''
         pass
 
     def close(self):
+        _wprint('FlatfileMapping.close')
         self.vacuum() # Should we do this?  It should be fine.
         
 
@@ -334,6 +355,7 @@ class DB(object):
     Mapping = 'flat' # This is a good, sane default.
     Record = None
     def __init__(self, filename, Mapping=None, Record=None):
+        _wprint('DB.__init__')
         if Record is not None:
             self.Record = Record
         if Mapping is not None:
@@ -343,6 +365,7 @@ class DB(object):
         self.map = self.Mapping(filename)
 
     def _newRecord(self, id, s):
+        _wprint('DB._newRecord')
         record = self.Record(id=id)
         record.deserialize(s)
         return record 
@@ -352,20 +375,23 @@ class DB(object):
         return self._newRecord(id, s)
 
     def set(self, id, record):
+        _wprint('DB.set')
         s = record.serialize()
         self.map.set(id, s)
-        set_db_modified()   # set global conf modified
+        set_db_stat('modified')   # set global conf modified
 
     def add(self, record):
+        _wprint('DB.add')
         s = record.serialize()
         id = self.map.add(s)
         record.id = id
-        # set global conf modified
+        set_db_stat('modified') # set global conf modified
         return id
 
     def remove(self, id):
+        _wprint('DB.remove')
         self.map.remove(id)
-        set_db_modified()   # set global conf modified
+        set_db_stat('modified')   # set global conf modified
 
     def __iter__(self):
         for (id, s) in self.map:
@@ -387,12 +413,14 @@ class DB(object):
         return ilen(self.map)
 
     def flush(self):
+        _wprint('DB.flush')
         self.map.flush()
-        set_db_modified()   # set global conf modified
+        set_db_stat('modified')   # set global conf modified
 
     def vacuum(self):
+        _wprint('DB.vacuum')
         self.map.vacuum()
-        set_db_modified()   # set global conf modified
+        set_db_stat('modified')   # set global conf modified
 
     def close(self):
         self.map.close()
